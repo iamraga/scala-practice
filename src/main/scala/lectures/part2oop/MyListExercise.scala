@@ -16,12 +16,17 @@ abstract class MyList[+A] {
 
   override def toString: String = "[" + printElements + "]"
 
-  def map[B](transformer: MyTransformer[A, B]): MyList[B]
-  def flatMap[B](transformer: MyTransformer[A, MyList[B]]): MyList[B]
-  def filter(predicate: MyPredicate[A]): MyList[A]
+  def map[B](transformer: A => B): MyList[B]
+  def flatMap[B](transformer: A => MyList[B]): MyList[B]
+  def filter(predicate: A => Boolean): MyList[A]
 
   //Concatenation
   def ++[B >: A](list: MyList[B]): MyList[B]
+
+  //foreach
+  def foreach(f: A => Unit): Unit
+  //sort
+  def sort(compare: (A,A) => Int): MyList[A]
 }
 
 object EmptyList extends MyList[Nothing] {
@@ -32,10 +37,14 @@ object EmptyList extends MyList[Nothing] {
 
   override def printElements: String = ""
 
-  def map[B](transformer: MyTransformer[Nothing, B]): MyList[B] = EmptyList
-  def flatMap[B](transformer: MyTransformer[Nothing, MyList[B]]): MyList[B] = EmptyList
-  def filter(predicate: MyPredicate[Nothing]): MyList[Nothing] = EmptyList
+  def map[B](transformer: Nothing => B): MyList[B] = EmptyList
+  def flatMap[B](transformer: Nothing => MyList[B]): MyList[B] = EmptyList
+  def filter(predicate: Nothing => Boolean): MyList[Nothing] = EmptyList
   def ++[B >: Nothing](list: MyList[B]): MyList[B] = list
+
+  //HOFs
+  def foreach(f: Nothing => Unit): Unit = ()
+  def sort(compare: (Nothing, Nothing) => Int) = EmptyList
 }
 
 class Cons[+A](headVal: A, tailVal: MyList[A]) extends MyList[A] {
@@ -48,48 +57,60 @@ class Cons[+A](headVal: A, tailVal: MyList[A]) extends MyList[A] {
     if(tailVal.isEmpty) "" + headVal
     else headVal + " " + tailVal.printElements
 
-  def filter(predicate: MyPredicate[A]): MyList[A] = {
-    if(predicate.test(headVal)) new Cons(headVal, tailVal.filter(predicate))
+  def filter(predicate: A => Boolean): MyList[A] = {
+    if(predicate(headVal)) new Cons(headVal, tailVal.filter(predicate))
     else tailVal.filter(predicate)
   }
 
-  def map[B](transformer: MyTransformer[A, B]): MyList[B] = {
-    new Cons(transformer.transform(headVal), tailVal.map(transformer))
+  def map[B](transformer: A => B): MyList[B] = {
+    new Cons(transformer(headVal), tailVal.map(transformer))
   }
 
   def ++[B >: A](list: MyList[B]): MyList[B] = new Cons(headVal, tailVal ++ list)
 
-  def flatMap[B](transformer: MyTransformer[A, MyList[B]]): MyList[B] =
-    transformer.transform(headVal) ++ tailVal.flatMap(transformer)
+  def flatMap[B](transformer: A => MyList[B]): MyList[B] =
+    transformer(headVal) ++ tailVal.flatMap(transformer)
+
+  //HOFs
+  def foreach(f: A => Unit): Unit = {
+    f(headVal)
+    tailVal.foreach(f)
+  }
+
+  //sort
+  def sort(compare: (A,A) => Int): MyList[A] = {
+    def insert(x: A, sortedTailList: MyList[A]): MyList[A] = {
+      if(sortedTailList.isEmpty) new Cons(x, EmptyList)
+      else if(compare(x, sortedTailList.head) <= 0) new Cons(x, sortedTailList)
+      else new Cons(sortedTailList.head, insert(x, sortedTailList.tail))
+    }
+    val sortedTailList = tailVal.sort(compare)
+    insert(headVal, sortedTailList)
+  }
 }
 
 //EXercise
 /*
 generic trait predicate[T] (tests for type T)
 generic trait transformerp[A, B] (transforms A to B)
-map method takes transformer and returns list
+map method takes tansformer and returns list
 filter takes predicate and returns list
 flatmap takes transformer
  */
-
-trait MyPredicate[-T] {
-  def test(element: T): Boolean
-}
-
-trait MyTransformer[-A, B] {
-  def transform(element: A): B
-}
 
 object MyListTest extends App {
   val listOfIntegers = new Cons(1, new Cons(2, new Cons(3, EmptyList)))
   val anotherListOfIntegers = new Cons(2, new Cons(3, new Cons(4, EmptyList)))
 
-  println(listOfIntegers.map(new MyTransformer[Int, Int] {
-    override def transform(element: Int): Int = element * 2
+  println(listOfIntegers.map(new Function1[Int, Int] {
+    override def apply(element: Int): Int = element * 2
   }))
 
   println(anotherListOfIntegers ++ listOfIntegers)
-  println(anotherListOfIntegers.flatMap(new MyTransformer[Int, MyList[Int]] {
-    override def transform(element: Int): MyList[Int] = new Cons(element, new Cons(element + 1, EmptyList))
+  println(anotherListOfIntegers.flatMap(new Function1[Int, MyList[Int]] {
+    override def apply(element: Int): MyList[Int] = new Cons(element, new Cons(element + 1, EmptyList))
   }))
+
+  listOfIntegers.foreach(println)
+  println(listOfIntegers.sort((x,y) => y - x))
 }
